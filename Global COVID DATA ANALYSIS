@@ -1,0 +1,239 @@
+--------SQL BASED DATA ANALYSIS PROJECT ON COVID DATA FROM 2020-23--------
+
+--View data from table CovidDeaths--
+
+SELECT * 
+FROM PortfolioProject..CovidDeaths
+WHERE continent IS NOT NULL
+ORDER BY 3,4
+
+--View data from CovidVaccinations--
+SELECT *
+FROM PortfolioProject.CovidVaccinations
+ORDER BY 3,4
+
+
+
+SELECT location,date, total_cases,new_cases, total_deaths,population
+FROM PortfolioProject..CovidDeaths
+Order By 1, 2
+
+--Looking at Total Cases vs Total Deaths, also filtering data based on location--
+
+SELECT location,date, total_cases, total_deaths,(CONVERT(float, total_deaths) / NULLIF(CONVERT(float, total_cases), 0))*100 AS deathpercentage
+--totaldeaths and toalcases columns are converted to float 
+FROM PortfolioProject..CovidDeaths
+WHERE location like '%India%'
+Order By 1,2
+
+
+--Total Cases Vs Population
+--Shows what percentage of Population of India got COVID.
+SELECT location, date, total_cases, population, (CAST(total_cases AS decimal) / 
+CAST(population AS decimal)) * 100 AS casepercentage
+FROM PortfolioProject..CovidDeaths
+WHERE location like '%India%'
+Order By 1,2  
+
+--Countries with Highest Infection Rate
+
+SELECT location, MAX(total_cases) AS HighestInfectionCount, population, (CAST(MAX(total_cases) AS decimal) / 
+CAST(population AS decimal)) * 100 AS PercentagePopulationInfected
+--CAST is used to convert population  and total-cases
+--Maximum values for total_cases fopr each country is taken
+FROM PortfolioProject..CovidDeaths
+GROUP BY location, population
+ORDER BY PercentagePopulationInfected DESC	
+
+
+--Countries with the highest death count per population
+SELECT location, MAX(CAST( total_deaths AS int)) AS TotalDeathCount
+--Highest death count from each country is taken by using MAX 
+FROM PortfolioProject..CovidDeaths
+WHERE continent IS NOT NULL
+--continent with null value is removed,as such column gives the value of the entire continent 
+GROUP BY location
+ORDER BY TotalDeathCount DESC
+
+
+--Continent Wise Death Count
+SELECT location, continent, MAX(CAST(total_deaths AS INT)) AS TotalDeathCount
+FROM PortfolioProject..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY continent, location
+ORDER BY TotalDeathCount DESC
+
+--GLOBAL EVALUATION BASED ON DATE
+
+SELECT
+    date,
+    SUM(new_cases) AS total_cases,
+    SUM(new_deaths) AS total_deaths,
+    CASE
+        WHEN SUM(new_cases) = 0 THEN NULL
+        ELSE (SUM(new_deaths) * 100.0) / SUM(new_cases)
+    END AS death_rate
+--The case statement is used to calculate the daily death rate  and 
+--to avoid error causing from non numeric value 
+FROM
+    PortfolioProject..CovidDeaths
+GROUP BY  
+		date
+ORDER BY 
+		date ASC;
+
+--Global Covid Cases and Deaths
+SELECT
+        SUM(new_cases) AS total_cases,
+    SUM(new_deaths) AS total_deaths,
+    CASE
+        WHEN SUM(new_cases) = 0 THEN NULL
+        ELSE (SUM(new_deaths) * 100.0) / SUM(new_cases)
+    END AS death_rate
+FROM
+    PortfolioProject..CovidDeaths
+GROUP BY
+
+
+
+-- Total Population Vs Vaccination--
+WITH popvsvac 
+	(
+		continent,location,date,population,new_vaccination,RollingPeopleVaccinated
+	)
+AS
+	(
+SELECT 
+	dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+	SUM (CONVERT(BIGINT,COALESCE(vac.new_vaccinations,0) )) OVER( Partition by dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+--COALESCE function checks whether vac.new_vaccinations is NULL, and if it is, it replaces it with 0
+--OVER clause is used to calculate rolling sum separately for each distinct location.
+--
+FROM 
+	PortfolioProject..CovidDeaths dea
+JOIN
+	PortfolioProject..CovidVaccinations vac
+	ON dea.location=vac.location 
+    AND dea.date= vac.date
+WHERE 
+	dea.continent IS NOT NULL
+
+	)
+Select *, (RollingPeopleVaccinated/population)*100 AS VaccinationRate
+	From popvsvac
+	Order by 1 
+
+
+
+	
+--Global data analysis using Temp Table 
+
+Drop Table IF Exists #popvsvacrate
+CREATE TABLE #popvsvacrate
+(
+Continent Varchar(250),
+Location Varchar(250),
+Date datetime,
+population numeric,
+new_vaccinations numeric,
+RollingPeopleVaccinated Bigint
+)
+
+
+Insert Into #popvsvacrate
+SELECT 
+	dea.continent, 
+	dea.location, 
+	dea.date, 
+	dea.population,
+	vac.new_vaccinations,
+	SUM (CONVERT(BIGINT,COALESCE(vac.new_vaccinations,0) )) OVER( Partition by dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+
+FROM 
+	PortfolioProject..CovidDeaths dea
+JOIN
+	PortfolioProject..CovidVaccinations vac
+	ON dea.location=vac.location 
+    AND dea.date= vac.date
+WHERE 
+	dea.continent IS NOT NULL
+
+Select *, (RollingPeopleVaccinated/population)*100 AS VaccinationRate
+	From #popvsvacrate
+	Order by 1 
+
+
+--Create views for future visualisation 
+
+	--VIEW FOR COUNTRY BASED INFECTION RATE
+	CREATE VIEW infection_rate AS
+	SELECT 
+			location, 
+			MAX(total_cases) AS HighestInfectionCount,
+			population, 
+			(CAST(MAX(total_cases) AS decimal) / CAST(population AS decimal)) * 100 AS PercentagePopulationInfected
+	FROM PortfolioProject..CovidDeaths
+	GROUP BY 
+			location, 
+			population
+	
+	
+	--VIEW FOR COUNTRY WISE DEATH RATE
+	CREATE VIEW death_rate AS
+
+	SELECT 
+			location,
+			MAX(CAST( total_deaths AS int)) AS TotalDeathCount
+	FROM PortfolioProject..CovidDeaths
+	WHERE continent IS NOT NULL
+	GROUP BY 
+			location
+
+	--View Continent Wise Death Count
+	CREATE VIEW continent_vise_data AS
+	SELECT 
+		location, 
+		continent, 
+		MAX(CAST(total_deaths AS INT)) AS TotalDeathCount
+	FROM PortfolioProject..CovidDeaths
+	WHERE continent IS NOT NULL
+	GROUP BY 
+			continent,
+			location
+
+	--DATE BASED COVID DATA ANALYSIS
+CREATE VIEW datebaseddata AS
+SELECT
+    date,
+    SUM(new_cases) AS total_cases,
+    SUM(new_deaths) AS total_deaths,
+    CASE
+        WHEN SUM(new_cases) = 0 THEN NULL
+        ELSE (SUM(new_deaths) * 100.0) / SUM(new_cases)
+    END AS death_rate
+FROM
+    PortfolioProject..CovidDeaths
+GROUP BY  
+		date
+
+
+
+
+--Total Population Vs Vaccination--
+CREATE VIEW RollingPopulationVaccinated AS
+SELECT 
+	dea.continent, 
+	dea.location, 
+	dea.date, 
+	dea.population, 
+	vac.new_vaccinations,
+	SUM (CONVERT(BIGINT,COALESCE(vac.new_vaccinations,0) )) OVER( Partition by dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+
+FROM 
+	PortfolioProject..CovidDeaths dea
+JOIN
+	PortfolioProject..CovidVaccinations vac
+	ON dea.location=vac.location 
+    AND dea.date= vac.date
+WHERE 
+	dea.continent IS NOT NULL
