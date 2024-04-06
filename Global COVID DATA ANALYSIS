@@ -92,7 +92,8 @@ SELECT
     END AS death_rate
 FROM
     PortfolioProject..CovidDeaths
-GROUP BY
+GROUP BY date
+Order by date;
 
 
 
